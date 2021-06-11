@@ -1,0 +1,161 @@
+Seattle's Perfect Summer:  Fact or Fiction? 
+========================================================
+author: Stephanie Roark
+date: 12-12-2018
+autosize: true
+
+Seattle's Perfect Summer Day
+========================================================
+
+![Seattle's Summer](seattleskylinesummer.jpg)
+
+Seattle's Perfect Summer: Fact or Fiction?
+========================================================
+
+Fact!
+
+- The number of perfect weather days in Seattle is increasing on average every year!
+- Perfect weather days tend to occur more in the summer time when the rain dries up
+- Air quality issues of summer wildfires have not greatly impacted the number of perfect days 
+- Weekends do not tend to be more rainy than weekdays in the summer time
+
+
+Seattle's Perfect Summer: Fact or Fiction?
+========================================================
+
+Data: Talk about data and where obtained 
+
+- NOAA's weather dataset measured at Seattle-Tacoma Airport (SeaTac) spanning from 1948 to present, containing 50 variables including both max and min temperature and precipitation: [Seattle Daily]("https://www.ncdc.noaa.gov/cdo-web/datasets/GHCND/stations/GHCND:USW00024233/detail")
+- EPA's pre-generated air quality dataset with the air quality index by day for every county in the US and spanning from 01.01.1980 to 11.27.2018: [AQI]("https://aqs.epa.gov/aqsweb/airdata/download_files.html")
+- Seattle events data: [Seattle Special Events Data]("https://www.events12.com/seattle/")
+
+```{r data, eval=TRUE, echo=FALSE}
+library(tidyverse)
+library(knitr)
+library(lubridate)
+library(chron)
+library(rvest)
+require(devtools)
+install_github("Displayr/flipTime")
+library(flipTime)
+
+SeattleWeather <- readr::read_csv("SeattleWeather_1948_2017.csv")
+AQIdata <- readr::read_csv("AQI_KING.csv")
+AllWeather <- inner_join(SeattleWeather, AQIdata, by = c("DATE" = "Date"))
+AllWeather <- AllWeather %>%
+    mutate(PerfectDay = (TMAX <= 85 & TMIN >= 55 & PRCP <= 0.05 & AQI <= 100))
+#filter the complete weather data set 
+PerfectWeather <- AllWeather %>% filter(PerfectDay)
+```
+
+Temperature and Air Quality from 2012 to 2017 
+========================================================
+
+Consistent Temperature and Air Quailty Ranges
+
+```{r airqualityindex_plot,fig.width=20,fig.height=8, eval=TRUE, echo=FALSE}
+#plot tmin and tmax against date - color green for good days and red for bad
+AllWeather %>% 
+    mutate(year = year(DATE), day_of_year = yday(DATE) ) %>%
+    filter(year >= 2012) %>%
+    ggplot(aes(x=day_of_year, ymin=TMIN, ymax=TMAX, colour=AQI)) +
+    geom_linerange(size=0.5) +
+    scale_colour_gradient2(low = "green", mid="yellow", high = "red", midpoint = 100) +
+    # 125 is the midpoint of the "Unhealthy for Sensitive Groups" level
+    # 100 is the transition point from "Moderate" to "Unhealthy for Sensitive Groups"
+    facet_grid( year ~ .) +
+    xlab("Day of Year") + ylab("Temp (F, min to max)") +
+    ggtitle("Maximum and Minimum Temperature with Air Quality from 2010 to 2017") +
+    theme_minimal()
+```
+
+Rain Rain Rain 
+========================================================
+
+![Seattle's Rain](RainPuddle.jpg)
+
+
+Precipitation 
+========================================================
+
+We can see gaps in precipitation
+
+```{r rain_plot,fig.width=20,fig.height=8, eval=TRUE, echo=FALSE}
+#plot precipation by year
+AllWeather %>% 
+    mutate(year = year(DATE), day_of_year = yday(DATE) ) %>%
+    filter(year >= 2012) %>%
+    ggplot(aes(x=day_of_year, y=PRCP)) +
+    geom_bar(stat="identity") +
+    facet_grid( year ~ .) +
+    xlab("Day of Year") + ylab("Precipitation (inches)") +
+    coord_cartesian(ylim = c(0, 1)) +
+    scale_y_continuous(breaks=c(0,0.5,1)) +
+    ggtitle("Precipitation from 1980 to 2017") +
+    theme_classic()
+```
+
+What is Perfect?
+========================================================
+
+working definition of perfect weather
+
+- Temperature Range between 55 and 85 degrees F
+- Air Quality index below 100 which is the max range for moderate air quality before the air quality becomes unhealthy for sensitive groups
+- Precipitation less than or equal to 0.05 inches per day
+
+Seattle's Pefect Days
+========================================================
+
+The Perfect Weather days tend to happen in middle of year
+
+```{r perfect weather table plot, fig.width=20,fig.height=8, eval=TRUE, echo=FALSE}
+#plot tmin and tmax against date - color green for good days and red for bad
+PerfectWeather %>% 
+    mutate(year = year(DATE), day_of_year = yday(DATE) ) %>%
+    filter(year >= 2012) %>%
+    ggplot(aes(x=day_of_year, ymin=TMIN, ymax=TMAX)) +
+    geom_linerange(size=0.5) +
+    facet_grid( year ~ .) +
+    xlab("Day of Year") + ylab("Temp (F, min to max)") + 
+    ggtitle("Distribution of Perfect Weather Days from 1980 to 2017") +
+    theme_minimal()
+```
+
+Predicting Perfect Weather Days
+========================================================
+
+The number of perfect days on average is increasing by 0.79 days per year
+
+```{r lm, eval=TRUE, echo=FALSE}
+#summarise the number of perfect days by year
+PerfectWeatherYears <- PerfectWeather %>%
+    group_by( year=year(DATE) ) %>%
+    count()
+#linear regression model
+weather_model <- lm(n ~ year, PerfectWeatherYears)
+
+#plot the number of perfect days as a function of time
+plot(PerfectWeatherYears$n ~ PerfectWeatherYears$year, xlab = "Year", ylab = "Perfect Days / Year")
+abline(weather_model)
+temp_filterweekend <- PerfectWeather %>% filter( is.weekend(DATE) )
+#number of weekend days that are pefect and the with proportion for perfect weather dates
+nrow(temp_filterweekend)
+nrow(temp_filterweekend)/nrow(PerfectWeather)
+```
+
+
+Weekends and Events
+========================================================
+
+
+- `r nrow(temp_filterweekend)` perfect weather days  fall on weekends, which is `r round(nrow(temp_filterweekend)/nrow(PerfectWeather),3)*100`% of the perfect weather days
+
+- 22 events dates coincide with perfect weather dates and that these dates occur between June 1 and September 30
+
+Conclusion - Follow up analysis
+========================================================
+
+
+Follow up analysis could compare other Pacific Northwest cities and/or cities around the US to see if Seattle's summer is really special.
+

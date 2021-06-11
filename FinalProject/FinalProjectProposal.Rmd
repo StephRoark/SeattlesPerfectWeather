@@ -1,0 +1,12 @@
+---
+title: "ProjectProposal"
+author: "Stephanie Roark"
+date: "11/11/2018"
+output: html_document
+---
+
+##How Many Perfect Days are there in the PNW?
+
+The weather in the Pacific Northwest is notoriusly rainy and gloomy, but the summers are gloriously full of perfect weather, or at least that's what we believe. How many days are actually perfect? If we define a perfect day as being between a certain range of temperatures with good air quality and little to no precipitation, how many days per year are actually perfect?  Even better, how many of these perfect days coincide with weekends or when festivals and events are happening in the area? And how has the number of perfect days changed over the years? When defining a perfect day, the precipitation can't be assumed to be zero because we will often have a small sprinkle over night, but then beautiful blue-skyed days. Also the air quality has recently become an important factor as the wildfires in the past couple of years have made many summer days impossible to enjoy with thick, choking smoke. The weather data can be gathered from the National Weather Service, Washington State Air Quality, as well as scraped from other weather or environmental sources. The festival and events data can be scraped from local city web pages. After gathering and cleaning the data, I will perform analysis to find the number of perfect days which are in a certain temperature range with no smoke and almost no precipitation. Finally I will compare the data over a range of years and find days which coincide with weekends and events and then present my findings with a visualization of the number of perfect days and/or weekends and over a range of time. Challenges that I could encounter in the final project include difficulty finding the data for a range of time appropriate to the project or matching up the different types of data from the various sources to perform the analysis.  
+
+

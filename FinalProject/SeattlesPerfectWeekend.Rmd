@@ -1,0 +1,360 @@
+---
+title: 'Seattle’s Perfect Summer: Fact or Fiction?'
+author: "Stephanie Roark"
+date: "12/9/2018"
+output: html_document
+---
+
+The weather in the Pacific Northwest is notoriusly rainy and gloomy, but the summers are gloriously full of perfect weather, or at least that's what we believe. How many days are actually perfect?
+
+To answer this question, we must first think about what a perfect day means. The temperature should be warm, but not hot and the sun should be shining most if not all of the day. So we can define a perfect day as being between a certain range of temperatures, say between 60 degrees F and 80 degrees F, and little to no precipitation. When defining a perfect day, the precipitation can't be assumed to be zero because we will often have a small sprinkle over night, but then beautiful blue-skyed days.
+
+We will start our data collection at NOAA and the EPA.
+
+The NOAA website has available a weather dataset measured at Seattle-Tacoma Airport (SeaTac) spanning all the way back to 1948 containing 50 variables including both max and min temperature and precipitation data and is available for download here: [Seattle Daily]("https://www.ncdc.noaa.gov/cdo-web/datasets/GHCND/stations/GHCND:USW00024233/detail")
+
+The EPA has a pre-generated air quality dataset which contains the air quality index by day for every county in the US and spanning from 01.01.1980 to 11.27.2018: [AQI]("https://aqs.epa.gov/aqsweb/airdata/download_files.html")
+
+###Data
+
+Let's start by loading the datasets and taking a look at their structure.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE)
+library(tidyverse)
+library(knitr)
+library(lubridate)
+library(chron)
+library(rvest)
+require(devtools)
+install_github("Displayr/flipTime")
+library(flipTime)
+```
+
+Load the Seattle weather data:
+
+```{r SEAWeather}
+#read in seattle weather
+SeattleWeather <- readr::read_csv("SeattleWeather_1948_2017.csv")
+#take a look at the data
+kable(head(SeattleWeather))
+kable(tail(SeattleWeather))
+#look at the structure of the data
+str(SeattleWeather)
+```
+
+Seattle weather is a dataframe with 25551 observations of 5 variables which are `r colnames(SeattleWeather)`. Each observation represents a single day's meausurements.
+
+TMAX and TMIN are integers representing the maximum and minimum temperatures recorded for that day. RAIN is a logical vector which is true if there is 0.01 inches of rain and false if there is 0.0 inches precipitation whereas PRCP is a numeric representing the amount of daily precipitation measured in inches. DATE is already a date factor so it won't need to be transformed.
+
+Next we must consider air quality as the recent wildfires on the west coast have greatly impacted everyone's ability to safely go outside and a good air quality rating should be factored into our definition of a perfect day. 
+
+We load each year of AQI data from 1980 to present, filtering for only Seattle, King County, Washington, and then create a single data frame for all the years of data.
+
+```{r load AQIdata}
+#load the code from the EPA and create a table from all the years
+#after data was read in and stored in a .csv, code was removed to allow for faster knitting
+#data_list <- list()
+#for(year in 1980:2018) {
+#    temp <- tempfile()
+#    base_file_name <- paste0("daily_aqi_by_county_",year)
+#    url_name <- paste0("https://aqs.epa.gov/aqsweb/airdata/",base_file_name,".zip")
+#    csv_name <- paste0(base_file_name,".csv")
+#    download.file(url_name,temp)
+#    data <- read_csv(unz(temp, csv_name)) %>%
+#        filter(`State Name` == "Washington" & `county Name` == "King")
+#    data_list[[year]] <- data
+#    unlink(temp)
+#}
+#AQIdata <- do.call("rbind", data_list)
+#load the .csv created from reading in the downloaded AQI year data
+AQIdata <- readr::read_csv("AQI_KING.csv")
+#take a look at the data
+kable(head(AQIdata))
+kable(tail(AQIdata))
+#look at the structure of the data
+str(AQIdata)
+```
+
+The AQI or air quality index data set consists of 14090 observations of 10 variables including `r colnames(AQIdata)`. Each observation represents a single day's meausurements. The Date and Category variables are of interest in determining which days had acceptable air quality in Seattle. Once again the Date was read in as a date factor and category is a character.
+
+So now we have 2 dataframes with temperature, precipitation and air quality included. The next step is to combine these dataframes into one table.
+
+Since our AQI dataset only contains data from 1980, we will only have concurrent dates beginning from 01.01.1980 and going to 12.14.2017 which is when the Seattle Weather Data Ends.
+
+```{r join}
+
+### inner join on the dates available
+AllWeather <- inner_join(SeattleWeather, AQIdata, by = c("DATE" = "Date"))
+
+#look at how the new table is structured
+str(AllWeather)
+
+#look at the sumamry statistics of air quality
+kable(AllWeather %>%
+    select_if(is.numeric) %>%
+    skimr::skim(AQI))
+#look at the sumamry statistics of max temperature
+kable(AllWeather %>%
+    select_if(is.numeric) %>%
+    skimr::skim(TMAX))
+#look at the sumamry statistics of min temperature
+kable(AllWeather %>%
+    select_if(is.numeric) %>%
+    skimr::skim(TMIN))
+#look at the sumamry statistics of precipitation
+kable(AllWeather %>%
+    select_if(is.numeric) %>%
+    skimr::skim(PRCP))
+
+#how many NA's are in the new table
+sum(is.na(AllWeather))
+
+```
+
+From the numberic summary statistics, we can see that AQI, TMAX, TMIN, and PCRP have little or no missing data, reasonable mins and maxs, and the histograms show that the data is normally distributed.
+
+####Visualizing the Data
+
+Now that we have our two datasets joined together, let's take a look at the max and min temp ranges for each year with air quality.
+
+```{r airqualityindex_plot,fig.width=7,fig.height=21}
+#plot tmin and tmax against date - color green for good days and red for bad
+AllWeather %>% 
+    mutate(year = year(DATE), day_of_year = yday(DATE) ) %>%
+    ggplot(aes(x=day_of_year, ymin=TMIN, ymax=TMAX, colour=AQI)) +
+    geom_linerange(size=0.5) +
+    scale_colour_gradient2(low = "green", mid="yellow", high = "red", midpoint = 100) +
+    # 125 is the midpoint of the "Unhealthy for Sensitive Groups" level
+    # 100 is the transition point from "Moderate" to "Unhealthy for Sensitive Groups"
+    facet_grid( year ~ .) +
+    xlab("Day of Year") + ylab("Temp (F, min to max)") +
+    ggtitle("Maximum and Minimum Temperature with Air Quality from 1980 to 2017") +
+    theme_minimal()
+```
+
+From the plots we can see that air quality tends to be an issue in the summer time. The temperature range is pretty consistent throughout the year.
+
+And now the precipitation by day for each year. 
+
+```{r rain_plot,fig.width=7,fig.height=21}
+#plot precipation by year
+AllWeather %>% 
+    mutate(year = year(DATE), day_of_year = yday(DATE) ) %>%
+    ggplot(aes(x=day_of_year, y=PRCP)) +
+    geom_bar(stat="identity") +
+    facet_grid( year ~ .) +
+    xlab("Day of Year") + ylab("Precipitation (inches)") +
+    coord_cartesian(ylim = c(0, 1)) +
+    scale_y_continuous(breaks=c(0,0.5,1)) +
+    ggtitle("Precipitation from 1980 to 2017") +
+    theme_classic()
+```
+
+There are definite gaps in the precipitation each year which makes sense as the summers tend to be very dry. It is interesting to see how the dry weather gaps do not occur consistently at the same time of year.
+
+###Perfect Weather
+
+So, now that we have visualized the weather and air quality in Seattle, we can begin to define what perfect weather is. We can select a "perfect" temperature range, let's say only the days with TMIN and TMAX between 60 and 80 degrees F, and also days with no rain. We can assume that given this temperature range, the precipitation that falls will be rain rather than snow. One approach to selecting would be to filter the dataset for RAIN being FALSE, but this does not allow for any precipitation at all. Instead,let's consider the PCRP variable which is inches of rain measured in a day. We can filter for precipitation less than a certain amount of rain in inches to account for the common occurence of rain over night and this approach will allow for sensitivity testing of edge perfect days. The data may be sensitive close to the ranges that we select, so we will want to examine the data near our range to see if there is a great difference in perfect days.
+
+####Sensitivity Testing for AQI and Temperature Range
+
+```{r temprange}
+#let's first look at the number of days in the 60-80 degree range
+SeattleWeather_TempRange6080 <- AllWeather %>%
+    filter(TMAX <= 80 & TMIN >= 60)
+count(SeattleWeather_TempRange6080)
+
+#now let's widen the range to  55-85 degree range
+SeattleWeather_TempRange5585 <- AllWeather %>%
+    filter(TMAX <= 85 & TMIN >= 55)
+count(SeattleWeather_TempRange5585)
+```
+
+Temp Range (F)  |          Days within Temp Range        | Percentage                                                   
+--------------- | -------------------------------------- | -------------------------------------------------------------------
+        60 - 80 | `r count(SeattleWeather_TempRange6080)`| `r round(count(SeattleWeather_TempRange6080)/nrow(AllWeather)*100, 2)`%
+        55 - 85 | `r count(SeattleWeather_TempRange5585)`| `r round(count(SeattleWeather_TempRange5585)/nrow(AllWeather)*100, 2)`%
+
+          
+There's a vast difference in the percentage of days between the temp range of 60 and 80 which is `r round(count(SeattleWeather_TempRange6080)/nrow(AllWeather)*100, 2)`%, and between 55 and 85 which is `r round(count(SeattleWeather_TempRange5585)/nrow(AllWeather)*100, 2)`%. We will go with the later because some people might be a little less sensitive to the temperature range and we can consider more possible perfect days.
+
+Filtering for precipitation range:
+
+```{r preciprange}
+#total number of days in the data set
+nrow(AllWeather)
+
+###how many days with rain less than 0.01
+SeattleWeather_noRain0.01 <- AllWeather %>%
+    filter(PRCP <= 0.01)
+count(SeattleWeather_noRain0.01)
+
+###how many days with rain less than 0.01
+SeattleWeather_noRain0.03 <- AllWeather %>%
+    filter(PRCP <= 0.03)
+count(SeattleWeather_noRain0.03)
+
+###how many days with rain less than 0.05
+SeattleWeather_noRain0.05 <- AllWeather %>%
+    filter(PRCP <= 0.05)
+count(SeattleWeather_noRain0.05)
+
+###or days with rain less than 0.1
+SeattleWeather_noRain0.1 <- AllWeather %>%
+    filter(PRCP <= 0.1)
+count(SeattleWeather_noRain0.1)
+```
+
+
+Rain Amount(In) |           Days with Rain           | Percentage                                                   
+--------------- | ---------------------------------- | -------------------------------------------------------------------
+           0.01 |`r count(SeattleWeather_noRain0.01)`| `r round((count(SeattleWeather_noRain0.01)/nrow(AllWeather))*100,2)`%
+           0.03 |`r count(SeattleWeather_noRain0.03)`| `r round((count(SeattleWeather_noRain0.03)/nrow(AllWeather))*100,2)`%
+           0.05 |`r count(SeattleWeather_noRain0.05)`| `r round((count(SeattleWeather_noRain0.05)/nrow(AllWeather))*100,2)`%
+           0.10 |`r count(SeattleWeather_noRain0.1) `| `r round((count(SeattleWeather_noRain0.1)/nrow(AllWeather))*100,2)`%
+           
+
+The percentage of days with less than or equal to 0.01 inches of precipitation is `r round((count(SeattleWeather_noRain0.01)/nrow(AllWeather))*100,2)`%, 0.05 inches of precipitation is `r round((count(SeattleWeather_noRain0.05)/nrow(AllWeather))*100,2)`% while 0.1 is `r round((count(SeattleWeather_noRain0.1)/nrow(AllWeather))*100, 2)`%. There is much less sensitivity to days within the precipitation range, so we will select 0.05 inches.
+
+Next, we need to choose only the dates where the air quality is listed as Moderate or Good.  We can use the Date and Category columns to filter for the moderate to good air quality days.
+
+```{r prefect&AQI subsets}
+# Create a new feature on AllWeather if the day is "perfect" or not
+AllWeather <- AllWeather %>%
+    mutate(PerfectDay = (TMAX <= 85 & TMIN >= 55 & PRCP <= 0.05 & AQI <= 100))
+#filter the complete weather data set 
+PerfectWeather <- AllWeather %>% filter(PerfectDay)
+
+str(PerfectWeather)
+```
+
+Now we have one table containing `r nrow(PerfectWeather)` days where the weather falls in our defined temperature range with little to no rain and moderate or good air quality.
+
+Let's take a look at the distribution of the perfect weather days.
+
+```{r perfect weather table plot, fig.width=7,fig.height=21}
+#plot tmin and tmax against date - color green for good days and red for bad
+PerfectWeather %>% 
+    mutate(year = year(DATE), day_of_year = yday(DATE) ) %>%
+    ggplot(aes(x=day_of_year, ymin=TMIN, ymax=TMAX)) +
+    geom_linerange(size=0.5) +
+    facet_grid( year ~ .) +
+    xlab("Day of Year") + ylab("Temp (F, min to max)") + 
+    ggtitle("Distribution of Perfect Weather Days from 1980 to 2017") +
+    theme_minimal()
+```
+
+We see right away that 1980 and 1981 have fewer perfect days. Everyone in the Pacific Northwest recalls the events of May 18, 1980  when Mt. St. Helens erupted causing extremely poor air quality and possibly affecting the weather of those summers.
+
+
+###Statistical Analysis- Hypothesis Test
+
+Our null hypothesis is that the number of perfect days per year is not changing over time. We can also write this out in an equation form:
+
+H0 = there is no difference in the number of perfect days over time.
+H1 = there is a difference in the number of perfect days over time.
+
+We can use a linear model to evaluate whether there is a linear relationship between the number of perfect days per as a function of time. The equation for a linear model is $y = {\beta}_0 + {\beta}_1*x$.
+
+```{r lm}
+#summarise the number of perfect days by year
+PerfectWeatherYears <- PerfectWeather %>%
+    group_by( year=year(DATE) ) %>%
+    count()
+#linear regression model
+weather_model <- lm(n ~ year, PerfectWeatherYears)
+summary(weather_model)
+
+#plot the number of perfect days as a function of time
+plot(PerfectWeatherYears$n ~ PerfectWeatherYears$year, xlab = "Year", ylab = "Perfect Days / Year")
+abline(weather_model)
+
+#summary plot the model
+plot(weather_model)
+#histogram of the residuals
+hist(weather_model$residuals)
+```
+
+Conditions for Regression:
+
+- The residuals of the model are nearly normal: we can see from the histogram of the residuals and Normal QQ plot shows that that they are nearly normally distributed.
+- The variability of the residuals is nearly constant: the Residuals vs. Fitted plot shows that the variability is constant.
+- The residuals are independent: the Residuals vs. Fitted plot also shows that the residuals are independent.
+- Each variable is linearly related to the outcome: the Perfect Days per year plotted against Year shows that they are linearly related.
+
+So, we can see from the model coefficients that the number of perfect days is increasing by `r round(weather_model$coefficients[2], 2)` days per year. The p-value for the model `r round(summary.lm(weather_model)$coefficients["year","Pr(>|t|)"],6)` or very close to zero and we can therefore reject our null hypothesis that the number of perfect weather days is not changing over time. The weather in the Pacific Northwest does appear to be changing over time with the number of days which fall into our definition of perfect weather increasing at `r round(weather_model$coefficients[2], 2)` days per year. Essentially, the PNW's reputation as a gloomy and dreary place to live is false as the weather is trending better every year. 
+
+###Weekends
+
+Finally, let's compare the data over the range of years to find how many of these perfect days coincide with weekends or when festivals and events are happening in the area?
+
+How many perfect days fall on weekends? It's a common myth here in the Seattle area that you know it's the weekend because it starts raining. Is it true that it rains more on the weekends?
+
+```{r weekends}
+#filter perfect weather dates for weekend dates
+temp_filterweekend <- PerfectWeather %>% filter( is.weekend(DATE) )
+#number of weekend days that are pefect and the with proportion for perfect weather dates
+nrow(temp_filterweekend)
+nrow(temp_filterweekend)/nrow(PerfectWeather)
+```
+
+The number of perfect weather days which fall on weekends is `r nrow(temp_filterweekend)` which is `r round(nrow(temp_filterweekend)/nrow(PerfectWeather),3)*100`% of the perfect weather days. Obviously, the old saying that you know it's the weekend because it starts raining is false as well.
+
+###Events
+
+We need data on events in the area which we can obtain from a local events website:
+
+[Seattle Special Events Data]("https://www.events12.com/seattle/")
+
+```{r events}
+#read in the url and get data for each month
+baseurl <- 'https://www.events12.com/seattle/'
+months <- c('january','february','march','april','may','june',
+            'july','august','september','october','november','december')
+dates <- c()
+#get the dates for events from each month
+for( month in months ) {
+    url <- paste0(baseurl,month,'/')
+    events_data <- read_html(url)
+    datestext <- events_data %>% html_nodes(".date") %>% html_text()
+    dates <- c(dates, datestext)
+}
+#create a dataframe of all the dates
+ds <- c()
+for( datetxt in dates ) {
+    date <- AsDate(datetxt, on.parse.failure="warn")
+    ds <- c(ds,as_date(date))
+}
+#create a dataframe and transform the dates to the same format as PerfectWeather
+dates_df = as.data.frame(ds)
+dates_df %<>% transmute(date = as_date(ds)) %>% distinct() %>%
+    filter(!is.na(date)) %>%
+    filter(year(date) > 2017 & year(date) < 2020) %>%
+    mutate(month = month(date), day = day(date), year = 2017 ) %>%
+    mutate(date = mdy( paste0(month,"-",day,"-",year) ) ) 
+
+#how many event dates are there
+nrow(dates_df)
+
+#create an events table of events dates that fall on perfect days 
+Seattle_events <- inner_join(PerfectWeather %>% filter(DATE >= "2017-01-01")
+                             , dates_df, by = c("DATE" = "date"))
+#number of events on perfect days
+nrow(Seattle_events)
+kable(head(Seattle_events$DATE))
+kable(tail(Seattle_events$DATE))
+
+```
+
+
+This data set consists of `r nrow(dates_df)` observations of `r ncol(dates_df)` different variables including `r colnames(dates_df)`. The dates were reformatted in order to join the events dates with our weather data. Obtaining data for prior events proved to be difficult and so we are using the 2017 perfect weather dates to comare to the 2018 event dates. We find the 22 events dates coincide with perfect weather dates and that these dates occur between June 1 and September 30. This is what we would expect as most perfect days occur at or near summer.
+
+###Conclusion
+
+Though there a many days in Seattle which are gloomy and dreary, the number of perfect weather days is increasing every year. These perfect weather days tend to occur more in the summer time when the rain dries up; also, thus far the air quality issues of summer wildfires have not greatly impacted the number of perfect summer days. The weekends also do not tend to be more rainy than weekdays in the summer time. So everyone who doubts that Seattle is a beautiful place to live because of the rainy weather should know that with every coming year there are more perfect days on average.
+This analysis may partially explain, along with economic factors not analyzed here, 
+why the Seattle-metro area is a relocation destination as well as a summer time outdoor activity mecca.
+
+
+
